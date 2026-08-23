@@ -2,6 +2,8 @@
 
 Tool-agnostic agent skills, shared across projects. Source of truth for skill content lives here — project repos consume it, they don't fork it.
 
+> **Attribution:** most of the skills in this repo originate from [Matt Pocock](https://github.com/mattpocock)'s [skills](https://github.com/mattpocock/skills) repo (MIT licensed) — all credit for their original design goes to him. `audit-security` is original to this repo. The `docs/owasp/` decision logs document the OWASP Top 10 coverage revisions layered on top of his originals. See [LICENSE](LICENSE).
+
 Targets: **Claude Code** and **GitHub Copilot**.
 
 📘 Full setup + usage guide: [docs/USAGE.md](docs/USAGE.md)
