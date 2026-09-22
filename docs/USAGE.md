@@ -161,7 +161,7 @@ Having installed the skills **globally** (§5) does not automatically configure 
 `setup-matt-pocock-skills` writes files into the **current working directory** (the target repo you're working on) — not globally. So when you pull a repo that has no config yet:
 
 1. Open Claude Code **from the target repo's root** and run `/setup-matt-pocock-skills` — **once per repo**.
-2. This writes `docs/agents/issue-tracker.md` + `triage-labels.md` + `domain.md`, and an "Agent skills" block into `CLAUDE.md`/`AGENTS.md`, into that repo.
+2. This writes `docs/agents/issue-tracker.md` + `triage-labels.md` + `domain.md` + `test-tools.md` (if a test skill is installed), and an "Agent skills" block into `CLAUDE.md`/`AGENTS.md`, into that repo.
 3. After that, tracker/triage-dependent skills behave correctly.
 
 > ⚠️ Run setup **inside the target repo** you'll work on, **not inside this skills repo**.
@@ -178,7 +178,7 @@ Having installed the skills **globally** (§5) does not automatically configure 
 
 **Skills that don't need config** (work without setup):
 
-- `audit-security`, `tdd`, `implement`, `diagnosing-bugs`, `prototype`, `research`, `domain-modeling`, `codebase-design`, `grill-me`, `resolving-merge-conflicts`, `handoff`, `wizard`
+- `audit-security`, `audit-test`, `tdd`, `implement`, `diagnosing-bugs`, `prototype`, `research`, `domain-modeling`, `codebase-design`, `grill-me`, `resolving-merge-conflicts`, `handoff`, `wizard`
 
 Most of these read `CONTEXT.md`/ADRs if present, and lazily create them if needed otherwise. If you'll only use this group, you can skip the setup step.
 
@@ -202,7 +202,7 @@ Most of these read `CONTEXT.md`/ADRs if present, and lazily create them if neede
    ▼
 /tdd          → Write tests first (including denial, injection, misuse-case, auth, exceptional-path security tests)
    ▼
-/code-review  → Review the diff along three axes: Standards / Spec / Security
+/code-review  → Review the diff along four axes: Standards / Spec / Security / Tests
 ```
 
 ### 7.3 Security workflow (OWASP Top 10:2025)
@@ -257,7 +257,7 @@ Skills are designed as an end-to-end **flow** that turns an idea into shipped co
 | `to-tickets` | Splits the spec into **tracer-bullet vertical slices**, each with a "blocked by" edge. Expand–contract for large refactors. |
 | `implement` | Implements a ticket; runs `/tdd` internally, `/code-review` at the end, then commits. OWASP A01–A10 secure-default rules built in. |
 | `tdd` | Red→green loop. Tests behavior through the public interface (the "seam"). Denial test first on a protected seam, injection test on an interpreter seam, exceptional-path test on the error path. |
-| `code-review` | Reviews a diff along **three axes** in parallel: Standards (coding standards + Fowler smells), Spec, Security (newly introduced OWASP holes). Axes are reported separately. |
+| `code-review` | Reviews a diff along **four axes** in parallel: Standards (coding standards + Fowler smells), Spec, Security (newly introduced OWASP holes), Tests (is the new/changed behavior tested at the right level, is there a regression test on a bug fix). Axes are reported separately. |
 
 #### On-ramps (starting points that generate work)
 
@@ -291,6 +291,7 @@ Skills are designed as an end-to-end **flow** that turns an idea into shipped co
 | `teach` | Teaches a topic across **multiple sessions**; uses the current directory as a stateful learning workshop (MISSION, lessons, reference, learning records). |
 | `writing-for-agents` | A reference for writing documents agents read (skills, AGENTS.md, pointed-at docs): context pointers, progressive disclosure, leading words, pruning. |
 | `audit-security` | The **whole-project** counterpart of `code-review`. Scans the entire codebase (not a diff) per OWASP category, produces a coverage inventory. Pre-release / periodic. |
+| `audit-test` | The test-side twin of `audit-security`. Scans the entire test suite: pyramid balance (ice-cream-cone/hollow-middle/thin-base), per-layer & critical-flow coverage, missing contract/e2e/snapshot tests, periodic disciplines (mutation testing, smoke/sanity/regression, load/stress/soak/spike). Vocabulary: `tdd/test-types.md`. Pre-release / periodic. |
 
 > **Note — skill pairs that do the same job:** `to-tickets`↔`to-issues` and `to-spec`↔`to-prd` are two variants of the same job. `ask-matt` refers to the `to-spec`/`to-tickets` pair as the main flow; `to-issues`/`to-prd` are alternate/older variants. Decide as a team which one you consider "official."
 
@@ -312,7 +313,50 @@ Skills are designed as an end-to-end **flow** that turns an idea into shipped co
 
   MAINTENANCE: /improve-codebase-architecture  •  GLOSSARY: /codebase-design, /domain-modeling
   SECURITY: /code-review on every PR  •  /audit-security before release
+  TESTS: /tdd while writing  •  /audit-test before release
 ```
+
+---
+
+### 7.7 Test strategy
+
+> All revisions in this sub-section (P0+P1+P2) have been **applied**. It followed the same method
+> used for the OWASP work (analysis documents first, then wired into the skills, in that order):
+> the analysis documents were written, and five skills (`tdd`, `to-spec`, `implement`,
+> `code-review`, `audit-test`) were revised.
+
+The security side's "diff gate / project-wide sweep" pair (§7.3) is mirrored on the test side the
+same way:
+
+| When | Skill | Scope | Status |
+|---|---|---|---|
+| **Writing a test** (inside the TDD loop) | `/tdd` | Which level to write at (unit/integration/component/subcutaneous/e2e), test-double choice | ✅ `test-types.md` written and pointed to from `SKILL.md`'s Seams section |
+| **Writing a spec** | `/to-spec` | "Testing Decisions" → "Test levels": when contract/e2e/subcutaneous/snapshot applies, optional Given-When-Then | ✅ added |
+| **Writing code** (default) | `/implement` | "Test the right level": cross-module→integration, service boundary→contract, critical flow→e2e/subcutaneous, UI→snapshot stub | ✅ added |
+| **Every PR / diff** | `/code-review` (4th axis: **Tests**) | Is the diff's added/changed behavior tested at the right level, is there a regression test on a bug fix | ✅ added |
+| **Pre-release / periodic** | `/audit-test` (**new skill**, `/audit-security`'s twin) | Project-wide pyramid balance, missing contract/component/e2e tests, smoke/sanity/regression suites, mutation score, performance tests (load/stress/soak/spike) | ✅ created |
+
+Some of these disciplines (mutation testing, smoke/sanity/regression, load/stress/soak/spike)
+**deliberately land in `/audit-test`, not `/tdd`'s red→green loop** — they aren't TDD-shaped
+(not written test-first) and are too slow/expensive to run per PR.
+
+**Global (agnostic) vs project-local (tooled) layer:** none of the skills above name a specific
+tool (Stryker.NET, Detox, Pact, k6…) — they only say "which test type, when." The concrete tool
+mapping is written **per project** to `docs/agents/test-tools.md`; `/setup-matt-pocock-skills`
+scaffolds it as a blank template (when a test skill is installed), and you fill it in for your
+own stack (e.g. xUnit/Stryker.NET for .NET, Jest/Detox for React Native). If the file exists,
+`/tdd`, `/implement`, `/audit-test`, `/to-spec` name concrete tools/commands; if it doesn't, they
+stay agnostic. This keeps the global skills project-independent (§8), while technology detail can
+be added per repo.
+
+The detailed before/after analysis for each heading (which item landed in which skill, and why)
+lives under `docs/test-strategy/T0X-*.md` — the same logic as OWASP's `docs/owasp/A0X-*.md`
+layout:
+
+- [T01 — Pyramid & Test Types](test-strategy/T01-pyramid-and-test-types-revision.md) — the Fowler pyramid, the Google size model, the 8 core test types (Unit/Integration/Component/Contract/Subcutaneous/E2E/Acceptance/Snapshot)
+- [T02 — Periodic / Project-Wide Disciplines](test-strategy/T02-periodic-disciplines-revision.md) — Smoke/Sanity/Regression, Mutation Testing, Performance tests (Load/Stress/Soak/Spike)
+- [T03 — Test Double Taxonomy](test-strategy/T03-test-double-taxonomy-revision.md) — Dummy/Fake/Stub/Spy/Mock, state vs behavior verification, Classical (Detroit) vs Mockist (London)
+- [T04 — Project-Local Tool Layer](test-strategy/T04-project-local-tool-layer-revision.md) — the global-agnostic vs project-local-concrete-tool split; `docs/agents/test-tools.md` + the `setup` skeleton
 
 ---
 

@@ -8,6 +8,17 @@ Implement the work described by the user in the spec or tickets.
 
 Use /tdd where possible, at pre-agreed seams.
 
+## Test the right level
+
+Don't default every test to a unit test. Match the test level to what the work touches, following the spec's **Test levels** decisions (from `/to-spec`) where they exist, and the vocabulary in `/tdd`'s `test-types.md`:
+
+- **Cross-module or module↔infrastructure contract** (repository↔DB, controller↔service through the real pipeline) → add an **integration** test, not just isolated unit tests of each side.
+- **A dependency on an independently-deployed service you don't control** (another team's API, a third party) → add or update a **contract** test at that boundary, rather than leaning on a brittle full end-to-end run.
+- **A critical whole-path flow** (login, payment, data sync) → ensure one **end-to-end** or **subcutaneous** proof of the whole path exists; don't rely only on unit tests of its parts.
+- **Rendered UI** → if using snapshots, stub non-deterministic values (timestamps, ids) so they aren't flaky-by-construction.
+
+Prefer the highest seam that gives the confidence you need. This is the write-time counterpart to `/code-review`'s Tests axis (the diff gate) and `/audit-test` (the whole-project sweep).
+
 ## Authorization by default (OWASP A01)
 
 When the work adds or changes an entry point (route, handler, controller, resolver, server action, job that acts on caller data):

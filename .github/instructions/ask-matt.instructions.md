@@ -10,7 +10,7 @@ description: "Ask which skill or flow fits your situation. A router over the ski
 
 You don't remember every skill, so ask.
 
-A **flow** is a path through the skills. Most paths run along one **main flow**, and two **on-ramps** merge onto it. Everything else is standalone, or a vocabulary layer that runs underneath.
+A **flow** is a path through the skills. Most paths run along one **main flow**, and three **on-ramps** merge onto it. Everything else is standalone, a codebase-health sweep, or a vocabulary layer that runs underneath.
 
 ## The main flow: idea → ship
 
@@ -22,10 +22,12 @@ The route most work travels. You have an idea and want it built.
    - **`/prototype`** to answer the question with throwaway code,
    - **`/handoff`** back what you learned, and reference it from the original idea thread.
 3. **Branch — is this a multi-session build?**
-   - **Yes** → **`/to-spec`** (turn the thread into a spec), then **`/to-tickets`** to split it into tracer-bullet tickets, each declaring its **blocking edges**. On a local tracker that's one file per ticket under `.scratch/<feature>/issues/`, worked blockers-first by hand; on a real tracker the edges become native blocking links, so any ticket whose blockers are done can be grabbed — kick off **`/implement`** per ticket, **`/clear`ing context between each one**. Each ticket is self-contained, so the last one's context is disposable.
+   - **Yes** → **`/to-spec`** (turn the thread into a spec — carrying Access Control, Sensitive Data, and Threat Model/Abuse Cases sections so security is captured at design time, A01/A04/A06), then **`/to-tickets`** to split it into tracer-bullet tickets, each declaring its **blocking edges**. On a local tracker that's one file per ticket under `.scratch/<feature>/issues/`, worked blockers-first by hand; on a real tracker the edges become native blocking links, so any ticket whose blockers are done can be grabbed — kick off **`/implement`** per ticket, **`/clear`ing context between each one**. Each ticket is self-contained, so the last one's context is disposable.
    - **No** → **`/implement`** right here, in the same context window.
 
-   Either way, **`/implement`** builds each issue by driving **`/tdd`** internally — one red-green slice at a time — then closes out by running **`/code-review`**, a two-axis review (Standards + Spec) of the diff, before committing. Reach for **`/tdd`** on its own when you just want to build a concrete behaviour test-first without a full spec, and **`/code-review`** on its own whenever you want to review a branch or PR against a fixed point.
+   **Variants:** **`/to-prd`** is an alternate form of `/to-spec` (a PRD instead of a spec), and **`/to-issues`** an alternate form of `/to-tickets` (both split a plan/spec/PRD into tracer-bullet, independently-grabbable issues). The main flow names the `/to-spec` → `/to-tickets` pair; reach for `/to-prd` / `/to-issues` when a team has standardized on those instead. Pick one of each pair per project so the flow stays consistent.
+
+   Either way, **`/implement`** builds each issue by driving **`/tdd`** internally — one red-green slice at a time, with secure-by-default rules (OWASP A01–A10) baked in — then closes out by running **`/code-review`**, a four-axis review (Standards + Spec + Security + Tests) of the diff, before committing. Reach for **`/tdd`** on its own when you just want to build a concrete behaviour test-first without a full spec — it also carries the security misuse-case tests (denial, injection, exceptional-path) and points at the test-type vocabulary in `test-types.md` — and **`/code-review`** on its own whenever you want to review a branch or PR against a fixed point. `/code-review` is the per-diff gate; its **whole-project counterparts**, run before a release rather than per-diff, are **`/audit-security`** and **`/audit-test`** (see Codebase health).
 
 ### Context hygiene
 
@@ -51,13 +53,15 @@ A starting situation that generates work, then merges onto the main flow.
 
 Not feature work — upkeep.
 
-- **`/improve-codebase-architecture`** — run whenever you have a spare moment to keep the codebase good for agents to operate in. It surfaces **deepening opportunities**; picking one _generates an idea_ you can take into the main flow at `/grill-with-docs`. It's the survey that finds the candidates; **`/codebase-design`** (below) is the bench you design the chosen one on.
+- **`/improve-codebase-architecture`** — run whenever you have a spare moment to keep the codebase good for agents to operate in. It surfaces **deepening opportunities** (including scattered per-handler authorization that wants a single deny-by-default seam, A01); picking one _generates an idea_ you can take into the main flow at `/grill-with-docs`. It's the survey that finds the candidates; **`/codebase-design`** (below) is the bench you design the chosen one on.
+- **`/audit-security`** — the whole-project counterpart to `/code-review`'s Security axis. Where code-review gates one diff, this sweeps the **entire codebase** against the OWASP Top 10 (A01–A10) and produces a coverage inventory per category. Run before a release or when onboarding a codebase, not per-PR.
+- **`/audit-test`** — the same whole-project sweep for the **test suite**: pyramid balance (a slow, top-heavy ice-cream-cone vs a healthy base), which modules and critical flows have no test at any level, missing contract/e2e/snapshot tests, and the periodic disciplines that don't fit a red-green loop (mutation testing, smoke/sanity/regression, load/stress/soak/spike). Speaks the vocabulary in `/tdd`'s `test-types.md`. Release-time or periodic, like `/audit-security`.
 
 ## Vocabulary underneath
 
 Two model-invoked references that run *beneath* the other skills — each the single source of truth for its vocabulary. Reach for them directly when the **words**, not the process, are the problem; or let the skills above pull them in.
 
-- **`/domain-modeling`** — sharpen the project's *domain* language: challenge a fuzzy term, resolve an overloaded word ("account" doing three jobs), record a hard-to-reverse decision as an ADR. It's the active discipline `/grill-with-docs` drives to keep `CONTEXT.md` a clean glossary.
+- **`/domain-modeling`** — sharpen the project's *domain* language: challenge a fuzzy term, resolve an overloaded word ("account" doing three jobs), model ownership relationships and roles (who owns what, privilege boundaries — A01), turn business-logic abuse into invariants (A06), and record a hard-to-reverse decision as an ADR. It's the active discipline `/grill-with-docs` drives to keep `CONTEXT.md` a clean glossary.
 - **`/codebase-design`** — the deep-module vocabulary (module, interface, depth, seam, adapter, leverage, locality) for designing a module's *shape*: a lot of behaviour behind a small interface at a clean seam. `/tdd` and `/improve-codebase-architecture` both speak it.
 
 ## Phase boundaries

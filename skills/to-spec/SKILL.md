@@ -98,6 +98,17 @@ A list of testing decisions that were made. Include a **denial test** for every 
 - Which modules will be tested
 - Prior art for the tests (i.e. similar types of tests in the codebase)
 
+**Test levels** — decide, at spec time, *what kind* of test each part of the feature needs, so implementation doesn't default to unit-only coverage. The seams sketched in step 2 already say where; this says at what level. Prefer the highest seam that gives the confidence you need (see `tdd`'s `test-types.md` for the vocabulary):
+
+- **Integration test** — call it out for any cross-module or module↔infrastructure contract this feature introduces (repository↔DB, controller↔service through the real pipeline). A contract only ever exercised end-to-end, or not at all, is a gap.
+- **Contract test** — required when the feature depends on an independently-deployed service it doesn't control (another team's API, a third party). Name it here so the boundary isn't left to a brittle full end-to-end run.
+- **End-to-end / subcutaneous test** — for each *critical* whole-path user flow (login, payment, data sync), decide whether it needs one end-to-end proof (or a subcutaneous one just below the UI, for e2e-level confidence without UI-automation fragility). Keep these few; don't specify one per story.
+- **Snapshot test** — for rendered UI, note whether snapshot coverage applies and that non-deterministic values (timestamps, ids) must be stubbed.
+
+If the feature is small enough that unit tests at the agreed seams suffice, say so explicitly rather than omitting this.
+
+**Acceptance format (optional)** — if the business side needs to read and agree with the tests, note that the acceptance criteria should be expressed in Given-When-Then (Gherkin) form so they're executable *and* readable by non-engineers. Only call this out when a stakeholder actually needs it; the user stories above already carry the business intent otherwise.
+
 ## Out of Scope
 
 A description of the things that are out of scope for this spec.

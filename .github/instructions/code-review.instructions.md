@@ -1,18 +1,19 @@
 ---
 applyTo: "**"
-description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along three axes — Standards (does the code follow this repo's documented coding standards?), Spec (does the code match what the originating issue/spec asked for?), and Security (does the diff introduce an OWASP hole — Broken Access Control, Security Misconfiguration, Software Supply Chain, Cryptographic Failures, Injection, Authentication Failures, Integrity Failures, Logging Failures, Exceptional Conditions, and other categories as they're added). Runs the reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X"."
+description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along four axes — Standards (does the code follow this repo's documented coding standards?), Spec (does the code match what the originating issue/spec asked for?), Security (does the diff introduce an OWASP hole — Broken Access Control, Security Misconfiguration, Software Supply Chain, Cryptographic Failures, Injection, Authentication Failures, Integrity Failures, Logging Failures, Exceptional Conditions, and other categories as they're added), and Tests (does new/changed behavior ship with a test at the right level, and would a bug fix have a regression test that catches it). Runs the reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X"."
 ---
 
 <!-- Auto-generated from skills/code-review/SKILL.md by scripts/generate-copilot.ps1. Do not edit by hand. -->
 
 
-Three-axis review of the diff between `HEAD` and a fixed point the user supplies:
+Four-axis review of the diff between `HEAD` and a fixed point the user supplies:
 
 - **Standards** — does the code conform to this repo's documented coding standards?
 - **Spec** — does the code faithfully implement the originating issue / spec?
 - **Security** — does the diff introduce an OWASP hole? A single axis covering multiple OWASP Top 10 categories (see the sub-sections below), kept as one sub-agent so the review doesn't grow one parallel agent per category. This is a **diff gate** (new holes only). For whole-project sweeps of *existing* holes, use the separate `audit-security` skill instead.
+- **Tests** — does the diff's new/changed behavior ship with a test, at the right level, that would catch a regression? This is a **diff gate** on *this change's* testing; for whole-project sweeps of *existing* test gaps (pyramid balance, untested modules, missing periodic disciplines), use the separate `audit-test` skill instead.
 
-Each axis runs as a **parallel sub-agent** so they don't pollute each other's context, then this skill aggregates their findings. The Security axis only runs when the diff touches a surface one of its sub-sections cares about (see each sub-section's own gate below); if none apply, skip the axis entirely and note "no security-relevant surface in diff".
+Each axis runs as a **parallel sub-agent** so they don't pollute each other's context, then this skill aggregates their findings. The Security axis only runs when the diff touches a surface one of its sub-sections cares about (see each sub-section's own gate below); if none apply, skip the axis entirely and note "no security-relevant surface in diff". The Tests axis runs whenever the diff changes behavior (see its gate below); skip it only for changes that ship no behavior at all (pure docs, comments, formatting).
 
 The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if `docs/agents/issue-tracker.md` is missing.
 
@@ -100,9 +101,20 @@ If the spec is missing, skip the Spec sub-agent and note this in the final repor
 
 If the diff touches no surface any sub-section's gate cares about, skip this sub-agent entirely and note "no security-relevant surface in diff".
 
+**Tests sub-agent prompt** — include:
+
+- The diff command and commit list.
+- The brief: "Review whether this diff's new/changed behavior is adequately tested. Gate: run whenever the diff changes behavior (adds/edits a function, branch, handler, or fixes a bug); skip only for changes that ship no behavior at all (pure docs, comments, formatting, config with no logic) and say so. This is a **diff gate** on *this change's* tests — not a whole-project coverage audit (that's the `audit-test` skill). Report findings, quoting the hunk for each. Under 400 words.
+
+  Test-level vocabulary (for the 'right level?' check): **unit** = one unit isolated, no real infra; **integration** = real infra (DB/filesystem/localhost) across owned modules; **component** = one service isolated, its deps doubled; **contract** = the agreement with an independently-deployed service you don't control; **subcutaneous** = end-to-end just below the UI; **end-to-end** = the whole system through its real front door. Prefer the highest seam that gives the needed confidence; confidence a cheaper level could carry shouldn't sit in a slow end-to-end test.
+
+  Check: (a) **Tested at all?** — does the new/changed behavior have a test, or does it ship untested? A protected/interpreter-facing/error-handling seam has its own required negative tests — but attribute those to Security; here, flag plain *absence* of any test for changed behavior. (b) **Right level?** — is a cross-module contract only proven by a slow end-to-end test where integration would do (or vice-versa: a critical whole-path flow only unit-tested on its parts, with no single end-to-end/subcutaneous proof)? Is a new dependency on an independently-deployed service covered by a contract test, or only by a brittle full end-to-end run? (c) **Regression test on a bug fix?** — if the diff fixes a bug, is there a test that fails without the fix and passes with it (it would have caught this bug)? A bug fix with no such test is a finding. (d) **Test quality** — is the test at a public seam, or coupled to implementation (mocks internal collaborators, asserts on private state, verifies through a side channel) so it breaks on refactor without a behavior change? Is an assertion tautological (expected value recomputed the way the code computes it)? For a snapshot: are non-deterministic values (timestamps, ids) stubbed, and does the snapshot change look intentional rather than blindly regenerated to pass? Findings are judgement calls grounded in the diff — don't assert a gap you can't point at."
+
+If the diff ships no behavior at all, skip this sub-agent and note "no behavioral change in diff".
+
 ### 5. Aggregate
 
-Present the reports under `## Standards`, `## Spec`, and `## Security` headings (with `### Access Control` / `### Security Config` / `### Dependency` / `### Cryptography` / `### Injection` / `### Authentication` / `### Integrity` / `### Logging` / `### Exceptional Conditions` sub-headings inside Security, whichever sub-sections actually ran), verbatim or lightly cleaned. Do **not** merge or rerank findings across axes — the axes are deliberately separate (see _Why separate axes_).
+Present the reports under `## Standards`, `## Spec`, `## Security`, and `## Tests` headings (with `### Access Control` / `### Security Config` / `### Dependency` / `### Cryptography` / `### Injection` / `### Authentication` / `### Integrity` / `### Logging` / `### Exceptional Conditions` sub-headings inside Security, whichever sub-sections actually ran), verbatim or lightly cleaned. Do **not** merge or rerank findings across axes — the axes are deliberately separate (see _Why separate axes_).
 
 End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes — that's the reranking the separation exists to prevent.
 
@@ -113,9 +125,16 @@ A change can pass one axis and fail another:
 - Code that follows every standard but implements the wrong thing → **Standards pass, Spec fail.**
 - Code that does exactly what the issue asked but breaks the project's conventions → **Spec pass, Standards fail.**
 - Code that is clean and matches the spec but exposes another user's data or leaks a stack trace → **Standards + Spec pass, Security fail.**
+- Code that is clean, correct, and secure but ships a new branch with no test — or a bug fix with no regression test → **Standards + Spec + Security pass, Tests fail.**
 
-Reporting them separately stops one axis from masking another. Security is the *diff gate* — new OWASP holes only, across whichever sub-sections its gate matches; the whole-project counterpart is `audit-security` (its A01–A05 and A07–A10 sections mirror these sub-sections; A06 Insecure Design has no diff gate — it lives in the design-time skills `to-spec` and `domain-modeling`).
+Reporting them separately stops one axis from masking another. Security and Tests are both *diff gates* — new OWASP holes / this change's testing only. Their whole-project counterparts are `audit-security` (its A01–A05 and A07–A10 sections mirror the Security sub-sections; A06 Insecure Design has no diff gate — it lives in the design-time skills `to-spec` and `domain-modeling`) and `audit-test` (pyramid balance, untested modules, and the periodic disciplines — mutation/smoke/performance — that a single diff can't show).
+
+**Tests vs Security overlap:** a protected, interpreter-facing, or error-handling seam has *required* negative tests (denial, injection-payload, exceptional-path) — those are attributed to **Security**, since their absence is a security hole. The **Tests** axis owns the rest: plain absence of any test for changed behavior, wrong test level, a missing regression test on a bug fix, and test-quality problems (implementation-coupling, tautological assertions, unstubbed snapshots). Attribute each finding to one axis, don't double-report.
 
 ## Why Security stays one axis, not one-per-category
 
-Each OWASP Top 10 category could in principle be its own parallel sub-agent, the way Access Control was added for A01. That doesn't scale: most categories are irrelevant to most diffs, and spawning one idle sub-agent per category per PR wastes agents and produces a report nobody reads in full. Instead, new categories are added as a **sub-section inside Security** — its own gate condition and its own checklist, but sharing the one sub-agent and one report heading. Only split a category out into its own top-level axis if it needs isolation Security can't give it (e.g. a fundamentally different kind of reviewer, or a gate so broad it would run on nearly every diff and drown out the others).
+Each OWASP Top 10 category could in principle be its own parallel sub-agent, the way Access Control was added for A01. That doesn't scale: most categories are irrelevant to most diffs, and spawning one idle sub-agent per category per PR wastes agents and produces a report nobody reads in full. Instead, new categories are added as a **sub-section inside Security** — its own gate condition and its own checklist, but sharing the one sub-agent and one report heading. Only split a concern out into its own top-level axis if it needs isolation Security can't give it (e.g. a fundamentally different kind of reviewer, or a gate so broad it would run on nearly every diff and drown out the others).
+
+## Why Tests is its own axis, not a Security sub-section
+
+Tests is the exception the rule above names: a gate **so broad it runs on nearly every diff**. Security's sub-section model works precisely because each sub-section's gate is narrow — most diffs touch no crypto, no deserializer, no LDAP filter — so idle sub-sections cost nothing. A "does this change ship a test" gate is the opposite: it matches almost every behavioral diff. Folding it into Security as a sub-section would make Security fire on nearly every PR and let a flood of test-coverage findings drown out the actual-hole findings the security review exists to surface. So Tests gets its own sub-agent and its own report heading — the same reasoning that keeps Standards and Spec separate, applied to the one testing concern broad enough to warrant it. (The *security-specific* negative tests — denial/injection/exceptional — still live under Security, because there their absence *is* the hole; see the overlap note above.)

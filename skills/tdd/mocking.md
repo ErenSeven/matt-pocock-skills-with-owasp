@@ -1,5 +1,7 @@
 # When to Mock
 
+For the taxonomy behind "mock" — Dummy/Fake/Stub/Spy/Mock, state vs behavior verification, Classical (Detroit) vs Mockist (London) TDD — see [test-types.md](test-types.md)'s "Test doubles" section. This file is the practical rule (where to reach for a double); that one is the vocabulary.
+
 Mock at **system boundaries** only:
 
 - External APIs (payment, email, etc.)
