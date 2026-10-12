@@ -92,6 +92,19 @@ How this feature could be misused (OWASP A06 — design the controls in, rather 
 
 If the feature has no meaningful abuse surface, say so explicitly rather than omitting the section.
 
+## Performance Targets
+
+How fast and how much the feature must handle (capture targets at spec time so performance can be tested and reviewed against a number, not a feeling — see [performance-targets.md](performance-targets.md) for the vocabulary). For each **critical flow** in this feature (the same flows the Test levels below single out):
+
+- **Target** — an indicator, a **percentile** threshold, and the **load it holds under**: e.g. `checkout: latency p95 < 300 ms @ 200 rps`. Percentiles (p50/p95/p99), never averages — an average hides the slow tail. No qualitative words ("fast", "scalable").
+- **Source** — derive the number from what users need, not from what the system happens to do today; keep the internal target stricter than any published commitment.
+- **Resource budget (optional)** — a ceiling worth enforcing, e.g. DB queries per request, payload size, memory per job.
+- **Web UI** — if users experience the flow in a browser, add Core Web Vitals targets for its key pages: LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, each at the 75th percentile of real page loads, mobile and desktop separately.
+
+Keep it to one or two targets per critical flow, not one per story. Resource limits that stop *abuse* (rate limits, max page/payload size, timeouts) belong in the Threat Model section, not here.
+
+If the feature has no performance requirement beyond "don't regress", say so explicitly rather than omitting the section.
+
 ## Testing Decisions
 
 A list of testing decisions that were made. Include a **denial test** for every access-controlled action from the Access Control section (unauthorized / other-owner → refused), and a **misuse-case test** for each abuse case from the Threat Model section (the abuse is blocked / the limit holds). Also include:
@@ -106,6 +119,7 @@ A list of testing decisions that were made. Include a **denial test** for every 
 - **Contract test** — required when the feature depends on an independently-deployed service it doesn't control (another team's API, a third party). Name it here so the boundary isn't left to a brittle full end-to-end run.
 - **End-to-end / subcutaneous test** — for each *critical* whole-path user flow (login, payment, data sync), decide whether it needs one end-to-end proof (or a subcutaneous one just below the UI, for e2e-level confidence without UI-automation fragility). Keep these few; don't specify one per story.
 - **Snapshot test** — for rendered UI, note whether snapshot coverage applies and that non-deterministic values (timestamps, ids) must be stubbed.
+- **Performance test** — for each target in the Performance Targets section, name the load shape that proves it (load / stress / soak / spike) and make the **target its pass criterion** — the test asserts the percentile threshold at the stated load. A load run that asserts no threshold can't fail, so it isn't a test. Note the **operational profile** it runs (the task mix and proportions, average and peak) and the **data volume** it needs — a load test on a near-empty database proves nothing about a flow that reads a large table.
 
 If the feature is small enough that unit tests at the agreed seams suffice, say so explicitly rather than omitting this.
 

@@ -109,7 +109,19 @@ Tool preference:
 
 **Tag every debug log** with a unique prefix, e.g. `[DEBUG-a4f2]`. Cleanup at the end becomes a single grep. Untagged logs survive; tagged logs die.
 
-**Perf branch.** For performance regressions, logs are usually wrong. Instead: establish a baseline measurement (timing harness, `performance.now()`, profiler, query plan), then bisect. Measure first, fix second.
+**Perf branch.** For performance regressions, logs are usually wrong. Instead: establish a baseline measurement (timing harness, `performance.now()`, profiler, query plan), then bisect. Measure first, fix second. Take the baseline as **percentiles** (p50/p95/p99), not an average — the regression often lives in the tail. Measure successful and failed requests separately (fast errors flatter the numbers). If the flow has a performance target (spec, docs), compare against it: "fixed" means back within target, not just faster than the broken build. Vocabulary: [`../to-spec/performance-targets.md`](../to-spec/performance-targets.md).
+
+Then narrow it down in this order — each step cuts the search space before you touch code:
+
+1. **Problem statement & workload.** What exactly got slower (which flow, which percentile), since when, and what changed — code, config, dependency, data volume, or the **load itself**? A system serving twice the traffic, or a table ten times bigger, isn't a code regression.
+2. **RED on the services.** For each service on the path: request **R**ate, **E**rrors, **D**uration distribution. It tells you *which* service users feel.
+3. **USE on the resources.** For each resource that service uses — CPU, memory, disk, network, and software resources (connection/thread pools, locks, queues, file handles): **U**tilization, **S**aturation (anything waiting or queued), **E**rrors. Check errors first; any non-zero saturation is a lead; ~100% utilization confirmed by saturation is a bottleneck.
+4. **Divide the time.** Split the slow request's latency across its synchronous steps (handler, each query, each outbound call) and drill into the largest — look at the slowest traces, not the average one.
+5. **Baseline vs variant, same load.** Each hypothesis from Phase 3 is tested by running the same load against the current build and the changed one; only a measured difference counts.
+
+Avoid the anti-methods: running whatever tool is familiar and looking for something obvious (streetlight), tweaking settings at random until a number moves (random change), and declaring it someone else's component without evidence (blame-someone-else). When minimising a perf repro (Phase 2), keep the **data volume and load** that make it slow — they are often load-bearing; an N+1 on ten rows is invisible.
+
+**Web front end.** If the slowness is in the browser, start from field data (which page, which metric, mobile or desktop) and reproduce in the lab on a throttled device profile. Divide the time by metric: a slow **LCP** splits into server response (TTFB), delay before the LCP resource starts loading, its download time, and render delay after it arrives — the biggest share names the fix; a slow **INP** splits into input delay (main thread busy), handler processing time, and presentation delay (layout/paint); a high **CLS** is found by identifying which element shifted and what moved it.
 
 ## Phase 5 — Fix + regression test
 

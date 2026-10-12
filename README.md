@@ -16,6 +16,8 @@ scripts/generate-copilot.ps1 builds Copilot output from skills/
 .github/copilot-instructions.md      generated index (do not edit by hand)
 .github/instructions/*.instructions.md generated per-skill files (do not edit by hand)
 docs/owasp/                  OWASP Top 10 skill-coverage decision logs (see below)
+docs/test-strategy/          test-strategy decision logs
+docs/performance/            performance decision logs
 ```
 
 Edit only under `skills/`. Everything under `.github/` in this repo is generated — regenerate after any change:
@@ -52,9 +54,21 @@ mklink /J "<project>\.github\instructions" "<path-to-this-repo>\.github\instruct
 
 **Updating** — because these are links, a single `git -C "<path-to-this-repo>" pull` refreshes both Claude and Copilot; no re-linking needed (re-copy only if you chose the copy path). The `generate-copilot.ps1` generator is PowerShell and is only for **editing** skills (see the guide), not for consuming them.
 
+## Docs
+
+The skill set is organised around three quality concerns, each covered at spec time, write time, diff time (`code-review`) and as a whole-project audit. The per-item analysis behind every revision (sources, before/after coverage, which skill got what) lives in the revision docs:
+
+| Concern | Whole-project audit | Revision docs |
+|---|---|---|
+| Security (OWASP Top 10) | `audit-security` | [docs/owasp/](docs/owasp/) |
+| Testing (pyramid, test types, periodic disciplines) | `audit-test` | [docs/test-strategy/](docs/test-strategy/) |
+| Performance (targets, code-level antipatterns, diagnosis, Core Web Vitals) | `audit-performance` | [docs/performance/](docs/performance/) |
+
 ## Caveat
 
 Copilot has no equivalent of Claude's on-demand, description-triggered skill invocation — `copilot-instructions.md` is always loaded in full, and `*.instructions.md` files apply per their `applyTo` glob (currently `**` for all, i.e. always-on too). A skill written for occasional/manual Claude invocation may need trimming before it's suitable to keep permanently in Copilot's context. Review generated output per skill before relying on it, especially for large skills.
+
+The generator copies only each skill's `SKILL.md` body. Supporting files next to it — e.g. `tdd/test-types.md`, `to-spec/performance-targets.md` — are **not** shipped to Copilot. Skills that point at them are written to stand on their own, but the deeper vocabulary is Claude-only.
 
 ## Skill format
 

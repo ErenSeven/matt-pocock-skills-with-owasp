@@ -178,7 +178,7 @@ Having installed the skills **globally** (§5) does not automatically configure 
 
 **Skills that don't need config** (work without setup):
 
-- `audit-security`, `audit-test`, `tdd`, `implement`, `diagnosing-bugs`, `prototype`, `research`, `domain-modeling`, `codebase-design`, `grill-me`, `resolving-merge-conflicts`, `handoff`, `wizard`
+- `audit-security`, `audit-test`, `audit-performance`, `tdd`, `implement`, `diagnosing-bugs`, `prototype`, `research`, `domain-modeling`, `codebase-design`, `grill-me`, `resolving-merge-conflicts`, `handoff`, `wizard`
 
 Most of these read `CONTEXT.md`/ADRs if present, and lazily create them if needed otherwise. If you'll only use this group, you can skip the setup step.
 
@@ -196,13 +196,13 @@ Most of these read `CONTEXT.md`/ADRs if present, and lazily create them if neede
 ### 7.2 Typical development flow
 
 ```
-/to-spec      → Turn the conversation into a spec (with Access Control, Sensitive Data, Threat Model sections)
+/to-spec      → Turn the conversation into a spec (with Access Control, Sensitive Data, Threat Model, Performance Targets sections)
    ▼
-/implement    → Implement the spec (secure defaults + authz + crypto + injection + auth + integrity + logging + exceptional rules built in)
+/implement    → Implement the spec (secure defaults + authz + crypto + injection + auth + integrity + logging + exceptional + performance rules built in)
    ▼
-/tdd          → Write tests first (including denial, injection, misuse-case, auth, exceptional-path security tests)
+/tdd          → Write tests first (including denial, injection, misuse-case, auth, exceptional-path security tests; a query-count test for N+1)
    ▼
-/code-review  → Review the diff along four axes: Standards / Spec / Security / Tests
+/code-review  → Review the diff along four axes: Standards (+ gated performance baseline) / Spec / Security / Tests
 ```
 
 ### 7.3 Security workflow (OWASP Top 10:2025)
@@ -292,6 +292,7 @@ Skills are designed as an end-to-end **flow** that turns an idea into shipped co
 | `writing-for-agents` | A reference for writing documents agents read (skills, AGENTS.md, pointed-at docs): context pointers, progressive disclosure, leading words, pruning. |
 | `audit-security` | The **whole-project** counterpart of `code-review`. Scans the entire codebase (not a diff) per OWASP category, produces a coverage inventory. Pre-release / periodic. |
 | `audit-test` | The test-side twin of `audit-security`. Scans the entire test suite: pyramid balance (ice-cream-cone/hollow-middle/thin-base), per-layer & critical-flow coverage, missing contract/e2e/snapshot tests, periodic disciplines (mutation testing, smoke/sanity/regression, load/stress/soak/spike). Vocabulary: `tdd/test-types.md`. Pre-release / periodic. |
+| `audit-performance` | The performance-side twin of `audit-security`/`audit-test`. Scans the whole project: do critical flows have a written target (percentile @ load) and measurement, the shape of instrumentation (averages or percentiles, tracing, dependency timings), code-level patterns (N+1, over-fetching, unindexed queries, per-request clients, unbounded caches, blocking I/O, unbounded retry), architectural antipatterns (busy database, monolithic persistence, noisy neighbor…). Doesn't measure, reads code. Vocabulary: `to-spec/performance-targets.md`. Pre-release / periodic. |
 
 > **Note — skill pairs that do the same job:** `to-tickets`↔`to-issues` and `to-spec`↔`to-prd` are two variants of the same job. `ask-matt` refers to the `to-spec`/`to-tickets` pair as the main flow; `to-issues`/`to-prd` are alternate/older variants. Decide as a team which one you consider "official."
 
@@ -314,6 +315,7 @@ Skills are designed as an end-to-end **flow** that turns an idea into shipped co
   MAINTENANCE: /improve-codebase-architecture  •  GLOSSARY: /codebase-design, /domain-modeling
   SECURITY: /code-review on every PR  •  /audit-security before release
   TESTS: /tdd while writing  •  /audit-test before release
+  PERFORMANCE: targets in /to-spec  •  /code-review on every PR  •  /audit-performance before release
 ```
 
 ---
@@ -357,6 +359,33 @@ layout:
 - [T02 — Periodic / Project-Wide Disciplines](test-strategy/T02-periodic-disciplines-revision.md) — Smoke/Sanity/Regression, Mutation Testing, Performance tests (Load/Stress/Soak/Spike)
 - [T03 — Test Double Taxonomy](test-strategy/T03-test-double-taxonomy-revision.md) — Dummy/Fake/Stub/Spy/Mock, state vs behavior verification, Classical (Detroit) vs Mockist (London)
 - [T04 — Project-Local Tool Layer](test-strategy/T04-project-local-tool-layer-revision.md) — the global-agnostic vs project-local-concrete-tool split; `docs/agents/test-tools.md` + the `setup` skeleton
+
+### 7.8 Performance strategy
+
+The "spec time / write time / diff gate / project-wide sweep" layout set up for security (§7.3) and testing (§7.7)
+was set up for performance the same way. Shared vocabulary: [`to-spec/performance-targets.md`](../skills/to-spec/performance-targets.md)
+(ISO 25010 Performance Efficiency, Four Golden Signals, percentiles not averages, the `p95 < 300 ms @ 200 rps` form).
+
+| When | Skill | Scope |
+|---|---|---|
+| **Writing a spec** | `/to-spec` | "Performance Targets" section: a percentile target + load condition per critical flow; a perf test asserting the target in Testing Decisions |
+| **Writing code** | `/implement` | "Meet the performance targets" + "Performance defaults" (no I/O in a loop, fetch only the needed data + paginate, index, share the client, resource/cache limits, non-blocking I/O, bounded retry) |
+| **Writing a test** | `/tdd` | Deterministic perf proxies: a test that locks an N+1 / per-request-client regression via query/call count |
+| **Every PR / diff** | `/code-review` | A **gated** performance baseline in the Standards axis (8 patterns + a 9th item for web UI only: Core Web Vitals) — one line if the diff doesn't touch a performance surface; a `### Performance` heading |
+| **Diagnosing a slowdown** | `/diagnosing-bugs` | Perf branch: baseline as percentiles, successful/failed separate; narrowing order problem statement & load → RED (service) → USE (resource) → dividing the time → before/after under the same load; "fixed" judged against the target |
+| **Pre-release / periodic** | `/audit-performance` (**new skill**) | Target & critical-flow inventory, measurement posture, code-level patterns, architectural antipatterns. Load-test presence stays in `/audit-test` §3 |
+
+**Boundary rule:** cases where an *attacker* triggers resource consumption (rate limit, page/payload limit, timeout, a resource not released on the error path) are security findings (`code-review` Security / `audit-security` A10, OWASP API4); *inefficiency under legitimate traffic* is a performance finding.
+
+The detailed before/after analysis lives in the `docs/performance/P0X-*.md` files:
+
+- [P01 — Quality Model, Metrics & Targets](performance/P01-quality-model-and-targets-revision.md) — ISO 25010, SRE golden signals, SLI/SLO, Azure WAF PE:01
+- [P02 — Code-Level Antipatterns & the Diff Gate](performance/P02-code-level-antipatterns-revision.md) — CISQ/ISO 5055 (18 CWEs), Azure performance antipatterns (10)
+- [P03 — Project-Wide Performance Inventory](performance/P03-project-wide-inventory-revision.md) — the `audit-performance` skill
+- [P04 — Measurement, Diagnosis & Perf Test Design](performance/P04-measurement-diagnosis-and-test-design-revision.md) — USE, RED, Gregg's anti-methodologies, ISTQB CT-PT, Azure WAF PE:06 (operational profile, realistic data, baseline, cadence)
+- [P05 — Front End: Core Web Vitals](performance/P05-front-end-core-web-vitals-revision.md) — LCP/INP/CLS (p75, field data, mobile/desktop separately); kicks in only for projects with a web UI
+
+**Web UI note:** if the project serves a browser-based interface, Core Web Vitals targets (LCP ≤ 2.5 s, INP ≤ 200 ms, CLS ≤ 0.1, p75) are added next to the server targets; the 9th item of the `/code-review` baseline and `/audit-performance` §5 only run then.
 
 ---
 
@@ -410,7 +439,7 @@ mklink /J "<project>\.github\instructions" "<repo-path>\.github\instructions"
 :: 4. Update (a single command, since it's a link)
 git -C "<repo-path>" pull
 
-:: 5. Use: /to-spec -> /implement -> /tdd -> /code-review ; /audit-security before release
+:: 5. Use: /to-spec -> /implement -> /tdd -> /code-review ; /audit-security, /audit-test, /audit-performance before release
 ```
 
 If PowerShell is allowed, see §5.b and §6.b for the symlink equivalents of the same steps.

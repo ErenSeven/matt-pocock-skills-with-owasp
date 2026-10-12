@@ -50,6 +50,22 @@ These don't get written test-first inside a TDD cycle — they run periodically,
 | **Soak / endurance** | Does sustained high load surface a leak or degradation over time? |
 | **Spike** | How does it react to a sudden, short burst (a special case of stress)? |
 
+A load stepped up until the target stops holding is a **capacity** (scalability) test — it finds the maximum load at which the target is still met. Start with load testing for a baseline; add stress, spike, and soak as the risk profile warrants, not all at once.
+
+A performance test is only as meaningful as its setup:
+
+- **Operational profile** — the scenario mixes the system's real tasks in their real proportions (e.g. 70% browse, 25% search, 5% checkout), at average *and* peak levels, with ramp-up and realistic pauses between steps — not one endpoint hammered in a loop.
+- **Realistic data** — production-like data volume and variety. A small dataset hides N+1 queries and missing indexes; identical inputs flatter caches.
+- **Environment** — as close to production as the flow's criticality justifies (sizing, scaling, caching, network). Know what is mocked: a stubbed dependency's latency isn't in the result.
+- **Baseline** — record each run's results and compare the next against them, so a regression or slow drift shows; re-baseline after an intentional architectural change.
+- **Cadence** — run it regularly (pipeline stage or schedule), not once before launch; a one-off run can't catch drift.
+
+For a **web UI**, the equivalent is a lab page-load check in the pipeline that asserts thresholds on LCP, CLS, and Total Blocking Time (the lab proxy for INP) for key pages — it catches front-end regressions before release. It doesn't prove the Core Web Vitals target; only field data at the 75th percentile does.
+
+Each shape's **pass criterion is a performance target**: a percentile threshold at a stated load (`p95 < 300 ms @ 200 rps`), not an average. A run that asserts no threshold is a measurement, not a test — it can't go red. Targets come from the spec's Performance Targets section; the vocabulary (golden signals, percentiles, target shape) lives in [`../to-spec/performance-targets.md`](../to-spec/performance-targets.md).
+
+**Deterministic performance proxies** are the exception that *does* fit a red-green cycle. Some performance regressions have a countable cause — one query per item (N+1), a new client per request, a call inside a loop. Assert the count, not the time: "loading an order with N lines issues a constant number of queries", "the handler opens at most one connection". Such a test runs at the unit or integration seam, is deterministic (no timing, no flakiness), and locks a fixed regression in place. It complements load testing — it can't show a target is met — but it catches the most common code-level regressions on every run.
+
 ## Test doubles
 
 Five distinct roles, often flattened into "mock" — worth naming precisely because they imply different assertions:

@@ -21,6 +21,25 @@ Don't default every test to a unit test. Match the test level to what the work t
 
 Prefer the highest seam that gives the confidence you need. This is the write-time counterpart to `/code-review`'s Tests axis (the diff gate) and `/audit-test` (the whole-project sweep).
 
+## Meet the performance targets
+
+When the spec has a **Performance Targets** section (from `/to-spec`), a critical flow isn't done until it is shown to meet its target: add or update the performance test the spec's Testing Decisions name, asserting the percentile threshold at the stated load. Don't claim a target is met from a single local run or an average. When a change is meant to improve performance, prove it the same way: run the same load against the build before and after the change, and keep it only if the measured difference holds. If the spec has no targets, don't invent them — but don't make an existing flow measurably slower without saying so.
+
+## Performance defaults
+
+When the work adds or changes data access, a loop over I/O, an outbound client, a retry, a cache, or resource acquisition:
+
+- **No I/O per item in a loop.** Fetch related data in one query, batch, or join — including children an ORM would otherwise lazy-load one by one (N+1).
+- **Fetch only what's needed.** Filter, project, and aggregate in the data layer, not in memory after fetching everything. Paginate any list that can grow without bound.
+- **Index what you query.** A new filter, sort, or join on a large table ships with its index in the same migration.
+- **Reuse shareable clients.** Create HTTP/DB/queue clients once (or pool them) instead of per request; don't mutate a shared client's settings per call.
+- **Release and bound resources.** Close or dispose every resource you acquire, scoped to its use; give every cache an expiry and a size limit.
+- **Don't block a request thread on I/O.** Use the async API where one exists; never block on an async result.
+- **Retry with limits.** Cap attempts and duration, back off between attempts, don't retry permanent errors, honor `Retry-After` — and reuse the project's retry facility rather than hand-rolling a loop.
+- **Web UI: protect the Core Web Vitals.** Never lazy-load the main above-the-fold image and keep it in the initial markup; `async`/`defer` non-critical scripts; give images, videos, embeds, and ad slots explicit dimensions; insert late content below what's already shown; animate with `transform`, not layout properties; keep event handlers short and push heavy work off the main thread.
+
+When you fix an N+1 or per-request-client problem, pin it with a deterministic test at the data-access seam (query or call count is constant regardless of N — see `/tdd`'s `test-types.md`), so the regression can't creep back in. This is the write-time counterpart to `/code-review`'s performance baseline.
+
 ## Authorization by default (OWASP A01)
 
 When the work adds or changes an entry point (route, handler, controller, resolver, server action, job that acts on caller data):

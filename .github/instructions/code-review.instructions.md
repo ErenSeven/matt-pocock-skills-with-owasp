@@ -1,6 +1,6 @@
 ---
 applyTo: "**"
-description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along four axes — Standards (does the code follow this repo's documented coding standards?), Spec (does the code match what the originating issue/spec asked for?), Security (does the diff introduce an OWASP hole — Broken Access Control, Security Misconfiguration, Software Supply Chain, Cryptographic Failures, Injection, Authentication Failures, Integrity Failures, Logging Failures, Exceptional Conditions, and other categories as they're added), and Tests (does new/changed behavior ship with a test at the right level, and would a bug fix have a regression test that catches it). Runs the reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X"."
+description: "Review the changes since a fixed point (commit, branch, tag, or merge-base) along four axes — Standards (does the code follow this repo's documented coding standards, plus a smell baseline and a gated performance baseline — N+1, over-fetching, per-request clients, unbounded retry?), Spec (does the code match what the originating issue/spec asked for?), Security (does the diff introduce an OWASP hole — Broken Access Control, Security Misconfiguration, Software Supply Chain, Cryptographic Failures, Injection, Authentication Failures, Integrity Failures, Logging Failures, Exceptional Conditions, and other categories as they're added), and Tests (does new/changed behavior ship with a test at the right level, and would a bug fix have a regression test that catches it). Runs the reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X"."
 ---
 
 <!-- Auto-generated from skills/code-review/SKILL.md by scripts/generate-copilot.ps1. Do not edit by hand. -->
@@ -8,7 +8,7 @@ description: "Review the changes since a fixed point (commit, branch, tag, or me
 
 Four-axis review of the diff between `HEAD` and a fixed point the user supplies:
 
-- **Standards** — does the code conform to this repo's documented coding standards?
+- **Standards** — does the code conform to this repo's documented coding standards? Also carries two baselines that apply even when the repo documents nothing: code smells, and a **gated performance baseline** that only runs when the diff touches a performance surface (see step 3).
 - **Spec** — does the code faithfully implement the originating issue / spec?
 - **Security** — does the diff introduce an OWASP hole? A single axis covering multiple OWASP Top 10 categories (see the sub-sections below), kept as one sub-agent so the review doesn't grow one parallel agent per category. This is a **diff gate** (new holes only). For whole-project sweeps of *existing* holes, use the separate `audit-security` skill instead.
 - **Tests** — does the diff's new/changed behavior ship with a test, at the right level, that would catch a regression? This is a **diff gate** on *this change's* testing; for whole-project sweeps of *existing* test gaps (pyramid balance, untested modules, missing periodic disciplines), use the separate `audit-test` skill instead.
@@ -60,13 +60,32 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
+The Standards axis also carries a **performance baseline** — code-level patterns drawn from CISQ/ISO 5055 Performance Efficiency and the Azure performance antipatterns catalog. The same two rules bind it (the repo overrides; always a judgement call), plus two more:
+
+- **Gated.** Apply it only when the diff touches a performance surface: data access (a query, an ORM call, a migration or index), a loop that does I/O or calls a collaborator, a newly created outbound client or connection, a retry policy, a cache, collection processing on a request path, resource acquisition (file/connection/handle), or rendered web UI (markup, styles, client-side scripts — gates the last item only). If none apply, report one line — "no performance-relevant surface in diff" — and skip it.
+- **Name the pattern, don't claim a measurement.** A diff can't show that code is slow; it can show a pattern that degrades under load. Say what it does at scale ("one query per cart item"), never "this is slow". If the spec has a Performance Targets section, tie a finding on a critical flow to its target.
+
+Each item reads *what it is* → *how to fix*:
+
+- **Per-item I/O in a loop** — a loop issues a query, request, or file operation per element, including an ORM lazily loading children one at a time (N+1). → fetch in one query/batch/join.
+- **Over-fetching** — reading every column or row then filtering, projecting, or aggregating in memory; returning an unbounded list with no pagination. → push filter/projection/aggregate into the data layer; paginate.
+- **Unindexed access** — a new filter, sort, or join on a large table hits a column with no index; or a write-heavy table gains an index per query. → ship the index with the migration; consolidate indexes.
+- **Per-request client/connection** — a client or connection designed to be shared (HTTP, DB, queue, cache) is created and disposed per request; data access without a pool. → one shared instance or a pool (confirm it's thread-safe; don't mutate shared settings per request).
+- **Unreleased / unbounded resource** — a resource not closed/disposed on the normal path; a cache or static collection with no expiry or size limit. → scope-bound release; give every cache a lifetime and a bound.
+- **Blocking I/O on a request path** — synchronous I/O on a request/event thread, or blocking on an async result. → use the async API.
+- **Unbounded retry** — retry with no attempt/duration limit, no growing delay, or on permanent errors (4xx); ignoring `Retry-After`. → cap attempts, back off, honor `Retry-After`; reuse the project's retry/circuit-breaker facility.
+- **Quadratic work** — nested loops matching two collections, a sequential search inside a loop, or string concatenation in a loop on a request path. → a lookup structure (map/set) or a builder.
+- **Web vitals regression** (web UI only) — *LCP:* the main above-the-fold image is lazy-loaded, injected by script, or only a CSS background (undiscoverable early); a synchronous script or large stylesheet blocks render. *CLS:* an image, video, embed, or ad slot has no reserved dimensions; content is inserted above existing content; layout properties (`top`, `width`…) are animated. *INP:* an event handler does long synchronous work on the main thread. → load the LCP resource eagerly and early, defer non-critical script, reserve space, animate with `transform`, break up long tasks.
+
+Attribute each finding to one axis: a resource not released **on the error path**, a missing **client-controlled** limit (page size, payload, rate limit, timeout), and a non-idempotent retry belong to Security (Exceptional Conditions / Access Control), not here.
+
 ### 4. Spawn the sub-agents in parallel
 
 **Standards sub-agent prompt** — include:
 
 - The full diff command and commit list.
-- The list of standards-source files you found in step 3, **plus the smell baseline from step 3** pasted in full — the sub-agent has no other access to it.
-- The brief: "Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
+- The list of standards-source files you found in step 3, **plus the smell baseline and the performance baseline (with its gate and attribution note) from step 3** pasted in full — the sub-agent has no other access to them. If the spec has a Performance Targets section, include it.
+- The brief: "Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); (b) any baseline smell you spot: name it and quote the hunk; and (c) under a separate `### Performance` sub-heading, any performance-baseline pattern — only if the diff matches the performance gate, otherwise the one line 'no performance-relevant surface in diff'. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells and performance patterns are always judgement calls, and a documented repo standard overrides both baselines. Skip anything tooling enforces. Under 500 words."
 
 **Spec sub-agent prompt** — include:
 
@@ -114,7 +133,7 @@ If the diff ships no behavior at all, skip this sub-agent and note "no behaviora
 
 ### 5. Aggregate
 
-Present the reports under `## Standards`, `## Spec`, `## Security`, and `## Tests` headings (with `### Access Control` / `### Security Config` / `### Dependency` / `### Cryptography` / `### Injection` / `### Authentication` / `### Integrity` / `### Logging` / `### Exceptional Conditions` sub-headings inside Security, whichever sub-sections actually ran), verbatim or lightly cleaned. Do **not** merge or rerank findings across axes — the axes are deliberately separate (see _Why separate axes_).
+Present the reports under `## Standards`, `## Spec`, `## Security`, and `## Tests` headings (with a `### Performance` sub-heading inside Standards, and `### Access Control` / `### Security Config` / `### Dependency` / `### Cryptography` / `### Injection` / `### Authentication` / `### Integrity` / `### Logging` / `### Exceptional Conditions` sub-headings inside Security, whichever sub-sections actually ran), verbatim or lightly cleaned. Do **not** merge or rerank findings across axes — the axes are deliberately separate (see _Why separate axes_).
 
 End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes — that's the reranking the separation exists to prevent.
 
@@ -134,6 +153,10 @@ Reporting them separately stops one axis from masking another. Security and Test
 ## Why Security stays one axis, not one-per-category
 
 Each OWASP Top 10 category could in principle be its own parallel sub-agent, the way Access Control was added for A01. That doesn't scale: most categories are irrelevant to most diffs, and spawning one idle sub-agent per category per PR wastes agents and produces a report nobody reads in full. Instead, new categories are added as a **sub-section inside Security** — its own gate condition and its own checklist, but sharing the one sub-agent and one report heading. Only split a concern out into its own top-level axis if it needs isolation Security can't give it (e.g. a fundamentally different kind of reviewer, or a gate so broad it would run on nearly every diff and drown out the others).
+
+## Why Performance is a Standards baseline, not its own axis
+
+Performance checks follow the same rule as Security's sub-sections: their gate is narrow (most diffs add no query, no loop over I/O, no new client), so an idle check should cost nothing — not a fifth sub-agent on every PR. They live with Standards because, like code smells, they are code-shape patterns a reviewer reads off the hunk, judged against an external baseline the repo may override. What a diff can't show — whether a flow actually meets its target under load, or architecture-level problems (one data store for every access pattern, a busy database) — belongs to the performance tests the spec names and to the whole-project sweep in `audit-performance`, not here.
 
 ## Why Tests is its own axis, not a Security sub-section
 
